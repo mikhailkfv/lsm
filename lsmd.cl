@@ -36,6 +36,7 @@
 		   (15 (format nil "Cannot stop the program ~A (not in environment)" args))
 		   (16 (format nil "Cannot start the program ~A (program already running)" args))
 		   (17 (format nil "Cannot stop the program ~A (program not started)" args))
+		   (99 (format nil "Unknown error"))
       ))
   )
 
@@ -97,9 +98,17 @@
 		       (cond ((uiop:process-alive-p nfo)
 			      nil)
 			     (t
-			       (start progs env req))))
+			       (multiple-value-bind (rets nenv) (start progs env req)
+				 (format t "~A" nenv)
+				 (cond ((not (string= "0" rets))
+					(return-from start rets)))
+				 (setf env nenv)))))
 		     (t
-		       (start progs env req)))))
+		       (multiple-value-bind (rets nenv) (start progs env req)
+			 (format t "~A" nenv)
+			 (cond ((not (string= "0" rets))
+				(return-from start rets)))
+			 (setf env nenv))))))
 
     (let ((nfo (uiop:launch-program (getf progline :start)
 				    :error-output (or (getf progline :stderr) (concatenate 'string (uiop:getenv "HOME") "/.var/log/" progr ".log"))
