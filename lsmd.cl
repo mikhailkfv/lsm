@@ -1,6 +1,7 @@
 #!/usr/bin/env -S sbcl --script
 
 (load "~/.local/share/common-lisp/quicklisp/setup.lisp")
+(ql:quickload "sb-posix")
 (ql:quickload "uiop")
 (ql:quickload "bordeaux-threads")
 (ql:quickload "usocket")
@@ -8,12 +9,23 @@
 (defconstant *unix-epoch-offset*
   (encode-universal-time 0 0 0 1 1 1970 0))
 
-(defun universal-to-unix-time (universal-time)
+(defconstant *current-millennium-AD* 2000)
+
+(defun universal-to-unix-time(universal-time)
   (- universal-time *unix-epoch-offset*)
   )
 
 (defun get-unix-time()
   (universal-to-unix-time (get-universal-time))
+  )
+
+(defun unix-to-universal-time(unix-time)
+  (+ unix-time *unix-epoch-offset*)
+  )
+
+(defun unix-to-timedate(unix-time)
+  (multiple-value-bind (seconds minutes hours day month year) (decode-universal-time (unix-to-universal-time unix-time))
+    (format nil "~D/~D/~D; ~D:~D.~D" month day (- year *current-millennium-AD*) hours minutes seconds))
   )
 
 (defun err(errno &optional str)
@@ -99,13 +111,11 @@
 			      nil)
 			     (t
 			       (multiple-value-bind (rets nenv) (start progs env req)
-				 (format t "~A" nenv)
 				 (cond ((not (string= "0" rets))
 					(return-from start rets)))
 				 (setf env nenv)))))
 		     (t
 		       (multiple-value-bind (rets nenv) (start progs env req)
-			 (format t "~A" nenv)
 			 (cond ((not (string= "0" rets))
 				(return-from start rets)))
 			 (setf env nenv))))))
@@ -153,20 +163,21 @@
     (let* ((envline (select-db env :prog (getf progline :prog)))
 	   (nfo (getf envline :nfo))
 	   (alive (uiop:process-alive-p nfo)))
-      (concatenate 'string (cond (alive
-				   "running")
-				 (t (let ((exitcode (slot-value nfo 'uiop/launch-program::exit-code)))
-				      (cond ((plusp exitcode)
-					     "dead")
-					    ((zerop exitcode)
-					     "finished")
-					    (t "not started")))))
-		   "; "
-		   (let ((launchtime (getf envline :time)))
-		   (cond ((and (not notime) launchtime)
-			   (format nil "started at ~D" launchtime))
-			 (t nil)))))
-    (sb-pcl::missing-slot (c) "not started"))
+      (let ((esc (code-char 27)))
+	(concatenate 'string
+		     (cond (alive
+			     (format nil "~C[92mrunning~C[0m" esc esc))
+			   (t (let ((exitcode (slot-value nfo 'uiop/launch-program::exit-code)))
+				(cond ((plusp exitcode)
+				       (format nil "~C[31mdead~C[0m" esc esc))
+				      ((zerop exitcode)
+				       (format nil "~C[32mfinished~C[0m" esc esc))
+				      (t "not started")))))
+		     (let ((launchtime (getf envline :time)))
+		       (cond ((and (not notime) launchtime)
+			      (format nil "; started at ~D" launchtime))
+			     (t nil))))))
+      (sb-pcl::missing-slot (c) "not started"))
   )
 
 (defun status(progs env &optional progr) 
@@ -176,21 +187,32 @@
 		  (return-from status (neterr 12 "status" progr))))
 	   (concatenate 'string
 			(handler-case
-			  (format nil "0@\~A:~%~Cstatus: ~A~%~Cstart: ~A~%~Cprocess: ~D~%" progr #\tab (statusline progline env) #\tab (getf progline :start) #\tab (uiop:process-info-pid (select-dbp env progr :nfo)))
-			  (sb-pcl::missing-slot (c) (format nil "0@\~A:~%~Cstatus: ~A~%~Cstart: ~A~%~Cprocess: NIL~%" progr #\tab (statusline progline env) #\tab (getf progline :start) #\tab)))
+			  (format nil "0@\~A:~%~Cstatus: ~A~%~Cstart: ~A~%~Cprocess: ~D~%~%" progr #\tab (statusline progline env) #\tab (getf progline :start) #\tab (uiop:process-info-pid (select-dbp env progr :nfo)))
+			  (sb-pcl::missing-slot (c) (format nil "0@\~A:~%~Cstatus: ~A~%~Cstart: ~A~%~Cprocess: NIL~%~%" progr #\tab (statusline progline env) #\tab (getf progline :start) #\tab)))
 			(let ((output (make-string-output-stream)))
 			  (uiop:run-program (format nil "tail -n 5 ~A" (or (getf progline :stderr) (concatenate 'string (uiop:getenv "HOME") "/.var/log/" progr ".log"))) :output output) ;TODO: unsafe
 			  (get-output-stream-string output))))
 	 )
 	(t
 	  (let ((globalstatus "0@"))
-	    (loop for progline in progs
-		  do (setq globalstatus (concatenate 'string globalstatus (format nil "~A: ~A~%" (getf progline :prog) (statusline progline env)))))
-	    globalstatus)
-	    ))
+	    (loop for progline in (delete-db progs :prog "lsm") 
+		  do (let ((progr (getf progline :prog))
+			   (status (statusline progline env t)))
+		       (setq globalstatus (concatenate 'string globalstatus
+						       (format nil "~&~A:~A~C~A~C"
+							       progr
+							       (format nil "~v{~a~:*~}" (- 79 (+ (+ (length progr) 1) (+ (length status) 
+															 (cond ((find #\m status)
+																-7)
+															       (t 2))
+																      ))) '(#\space))
+							       #\[
+							       status
+							       #\])))))
+	    globalstatus)))
   )
 
-(defun run_command(command &optional args &key progs env)
+(defun run_command(command &optional args &key progs env) ;TODO: Shutdown all command to exit session gracefully
   (cond ((string= command "start")
 	 (start progs env args))
 	((string= command "stop")
@@ -237,7 +259,5 @@
     (loop with progs = (configure cfgloc) with env
 	    do (setf env (server_listen (select-dbp progs "lsm" :addr) (parse-integer (select-dbp progs "lsm" :port)) progs env))))
   )
-
-
 
 (run)
