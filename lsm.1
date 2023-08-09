@@ -1,0 +1,54 @@
+.TH LSM 1 "lsm rc1" Linux "User Manuals" 
+.SH NAME
+lsm \- local service manager
+.SH SYNOPSIS
+.B lsm 
+.I <directive>
+.R [options]
+.SH DESCRIPTION
+.B Lsm
+.R is a barebones process supervision or session management program.
+Unlike other solutions, it is designed to run as non-root to manage local processes,
+i.e. those in the same session as lsm.
+It supports starting, stopping, and logging services.
+This program, lsm, is merely a tcp client that talks to
+.B lsmd
+.R which is responsible for managing the services.
+To set up lsm, please also read
+.BR lsmd (1).
+.SH DIRECTIVES
+.IP "start <service>"
+Start the specified service.
+.IP "stop <service>"
+Stop the specified service.
+.IP "restart <service>"
+Stop the specified service, then start it again.
+.IP "status [service]" 
+Stat the specified service, or if no service is specified, veiw the status of the whole environment.
+.SH FILES
+.I ~/.config/lsmrc
+.RS
+The default lsm configuration location.
+.SH ENVIRONMENT
+Lsm does not currently utilize environment variables.
+.SH DIAGNOSTICS
+The following diagnostics may be issued on stderr:
+ 
+1
+.RS
+Invalid argument passed to lsm.
+.RE
+2
+.RS
+Lsmd returned an error.
+.RE
+3
+.RS
+Cannot connect to lsmd, either bad address, blocked connection, or lsmd not running.
+.RE
+.SH BUGS
+Please report all bugs on the GitHub issue tracker.
+.SH AUTHOR
+Mikhail Kristoforovich <admin@mikhailkfv.xyz>
+.SH "SEE ALSO"
+.BR lsmd (1) 
