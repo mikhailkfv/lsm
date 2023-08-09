@@ -1,7 +1,6 @@
 #!/usr/bin/env -S sbcl --script
 
 (load "~/.local/share/common-lisp/quicklisp/setup.lisp")
-(ql:quickload "sb-posix")
 (ql:quickload "uiop")
 (ql:quickload "bordeaux-threads")
 (ql:quickload "usocket")
@@ -25,7 +24,7 @@
 
 (defun unix-to-timedate(unix-time)
   (multiple-value-bind (seconds minutes hours day month year) (decode-universal-time (unix-to-universal-time unix-time))
-    (format nil "~D/~D/~D; ~D:~D.~D" month day (- year *current-millennium-AD*) hours minutes seconds))
+    (format nil "~D/~D/~D--~D:~D.~D" month day (- year *current-millennium-AD*) hours minutes seconds))
   )
 
 (defun err(errno &optional str)
@@ -133,7 +132,7 @@
 	:name (concatenate 'string progr "on lsm"))
 
       (cond ((getf progline :secs)
-	     (sleep (parse-integer (getf progline :secs))) ;does * work here? also remember to do config checking rather than parsing the int here.
+	     (sleep (parse-integer *)) ;Should work here I think. also remember to do config checking rather than parsing the int here.
 	     (cond ((plusp (slot-value nfo 'uiop/launch-program::exit-code))
 		    (return-from start (neterr 13 progr)))))) ;TODO: Turn this into an AND or something cuz it's ugly
 
@@ -173,9 +172,13 @@
 				      ((zerop exitcode)
 				       (format nil "~C[32mfinished~C[0m" esc esc))
 				      (t "not started")))))
-		     (let ((launchtime (getf envline :time)))
+		     (let ((launchtime (getf envline :time))
+			   (timeformat (getf progline :time)))
 		       (cond ((and (not notime) launchtime)
-			      (format nil "; started at ~D" launchtime))
+			      (format nil "; started at ~D" (cond ((string= "unix" timeformat)
+								   (launchtime))
+								  (t 
+								    (unix-to-timedate launchtime)))))
 			     (t nil))))))
       (sb-pcl::missing-slot (c) "not started"))
   )
@@ -199,7 +202,7 @@
 		  do (let ((progr (getf progline :prog))
 			   (status (statusline progline env t)))
 		       (setq globalstatus (concatenate 'string globalstatus
-						       (format nil "~&~A:~A~C~A~C"
+						       (format nil "~A:~A~C~A~C~%"
 							       progr
 							       (format nil "~v{~a~:*~}" (- 79 (+ (+ (length progr) 1) (+ (length status) 
 															 (cond ((find #\m status)
