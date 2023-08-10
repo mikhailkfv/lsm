@@ -99,7 +99,7 @@
 	   (return-from start (neterr 12 "start" progr)))
 	  (envline
 	    (cond ((uiop:process-alive-p (getf envline :nfo))
-		   (return-from start (neterr 16 "start" progr)))
+		   (return-from start (values (neterr 16 "start" progr) env)))
 		  (t
 		    (setf env (delete-db env :prog progr))))))
 
@@ -134,7 +134,7 @@
       (cond ((getf progline :secs)
 	     (sleep (parse-integer *)) ;Should work here I think. also remember to do config checking rather than parsing the int here.
 	     (cond ((plusp (slot-value nfo 'uiop/launch-program::exit-code))
-		    (return-from start (neterr 13 progr)))))) ;TODO: Turn this into an AND or something cuz it's ugly
+		    (return-from start (values (neterr 13 progr) env)))))) ;TODO: Turn this into an AND or something cuz it's ugly
 
       (values "0" (push (list :prog progr :nfo nfo :time (get-unix-time) :ll 0) env))))
   )
@@ -142,12 +142,14 @@
 (defun stop(progs env progr)
   (let ((progline (select-db progs :prog progr))
 	(nfo (select-dbp env progr :nfo)))
+
     (cond ((not progline)
 	   (return-from stop (neterr 14 "stop" progr)))
 	  ((not nfo)
 	   (return-from stop (neterr 15 "stop" progr)))
 	  ((not (uiop:process-alive-p nfo))
 	   (return-from stop (neterr 17 "stop" progr)))) ;TODO: make this only send progr [keywords maybe?] - also, might want better control flow here.
+
     (let ((stop (select-dbp progs progr :stop)))
       (cond (stop
 	      (uiop:run-program stop))
